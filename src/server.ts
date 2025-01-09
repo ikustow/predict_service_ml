@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
-import { predictOrders } from './services/predictionService';
+import { predictOrdersWithStats } from './services/predictionService';
 import { PredictionRequest } from './models/PredictionRequest';
 import { OrderData, QueryData } from './models/OrderData';
 
@@ -23,9 +23,33 @@ app.post('/predict', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid input parameters' });
         }
 
-        // Perform prediction
-        const predictions = await predictOrders(orders, query.prediction_type, query.quantity);
-        return res.status(200).json({ predictions });
+        // Perform prediction using Simple-statistics
+        const { predictions, products } = predictOrdersWithStats(orders, query.prediction_type, query.quantity);
+
+        return res.status(200).json({
+            predictions: predictions.map((value, index) => {
+                const futureDate = new Date();
+                switch (query.prediction_type) {
+                    case 'day':
+                        futureDate.setDate(futureDate.getDate() + index + 1);
+                        break;
+                    case 'month':
+                        futureDate.setMonth(futureDate.getMonth() + index + 1);
+                        break;
+                    case 'year':
+                        futureDate.setFullYear(futureDate.getFullYear() + index + 1);
+                        break;
+                }
+
+                return {
+                    date: futureDate.toISOString(),
+                    predicted_value: value,
+                    period: query.prediction_type,
+                    type: 'orders',
+                    products
+                };
+            })
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: 'Internal server error' });

@@ -1,64 +1,37 @@
-import * as tf from '@tensorflow/tfjs-node';
+// @ts-ignore
+import { PolynomialRegression } from 'ml-regression';
 import { OrderData } from '../models/OrderData';
 
-export const predictOrders = async (
-    orders: OrderData[],
-    period: 'day' | 'month' | 'year',
-    count: number
-): Promise<{ date: string; predicted_value_of_orders: number; products: { product: string; predicted_average_quantity: number }[] }[]> => {
-    // Prepare data for training
-    const productQuantities = orders.reduce((acc, order) => {
-        if (!acc[order.product]) {
-            acc[order.product] = [];
-        }
-        acc[order.product].push(order.quantity);
-        return acc;
-    }, {} as Record<string, number[]>);
+export const predictOrdersWithStats = (orders: OrderData[], period: 'day' | 'month' | 'year', count: number): { predictions: number[]; products: { product: string; predicted_average_quantity: number }[] } => {
+    // Prepare data for prediction
+    const periods = orders.map((_, index) => index + 1); // Using index as the period number
+    const quantities = orders.map(order => order.quantity);
 
-    // Train a simple linear regression model for each product
-    const productModels: Record<string, tf.LayersModel> = {};
-    for (const product in productQuantities) {
-        const xs = tf.tensor2d(productQuantities[product].map((_, i) => [i]));
-        const ys = tf.tensor2d(productQuantities[product].map((q) => [q]));
+    // Train polynomial regression model
+    const regression = new PolynomialRegression(periods, quantities, 2); // Polynomial of degree 2
 
-        const model = tf.sequential();
-        model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
-        model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
-
-        await model.fit(xs, ys, { epochs: 50 });
-        productModels[product] = model;
-    }
-
-    // Generate predictions
-    const now = new Date();
+    // Predict future periods
     const predictions = Array.from({ length: count }, (_, i) => {
-        const futureDate = new Date(now);
-        switch (period) {
-            case 'day':
-                futureDate.setDate(futureDate.getDate() + i + 1);
-                break;
-            case 'month':
-                futureDate.setMonth(futureDate.getMonth() + i + 1);
-                break;
-            case 'year':
-                futureDate.setFullYear(futureDate.getFullYear() + i + 1);
-                break;
-        }
-
-        const products = Object.entries(productModels).map(([product, model]) => {
-            const prediction = model.predict(tf.tensor2d([[i + productQuantities[product].length]])) as tf.Tensor;
-            const predictedValue = prediction.dataSync()[0];
-            return { product, predicted_average_quantity: predictedValue };
-        });
-
-        const totalPredictedValue = products.reduce((sum, p) => sum + p.predicted_average_quantity, 0);
-
-        return {
-            date: futureDate.toISOString(),
-            predicted_value_of_orders: totalPredictedValue,
-            products,
-        };
+        const futurePeriod = periods.length + i + 1;
+        return regression.predict(futurePeriod);
     });
 
-    return predictions;
+    // Calculate predicted average quantities per product
+    const productAggregates = orders.reduce((acc, order) => {
+        const product = acc.find(p => p.product === order.product);
+        if (product) {
+            product.totalQuantity += order.quantity;
+            product.count += 1;
+        } else {
+            acc.push({ product: order.product, totalQuantity: order.quantity, count: 1 });
+        }
+        return acc;
+    }, [] as { product: string; totalQuantity: number; count: number }[]);
+
+    const products = productAggregates.map(p => ({
+        product: p.product,
+        predicted_average_quantity: p.totalQuantity / p.count,
+    }));
+
+    return { predictions, products };
 };

@@ -30,9 +30,31 @@ app.post('/predict', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         if (!orders || !query.prediction_type || !query.quantity || query.quantity <= 0) {
             return res.status(400).json({ error: 'Invalid input parameters' });
         }
-        // Perform prediction
-        const predictions = yield (0, predictionService_1.predictOrders)(orders, query.prediction_type, query.quantity);
-        return res.status(200).json({ predictions });
+        // Perform prediction using Simple-statistics
+        const { predictions, products } = (0, predictionService_1.predictOrdersWithStats)(orders, query.prediction_type, query.quantity);
+        return res.status(200).json({
+            predictions: predictions.map((value, index) => {
+                const futureDate = new Date();
+                switch (query.prediction_type) {
+                    case 'day':
+                        futureDate.setDate(futureDate.getDate() + index + 1);
+                        break;
+                    case 'month':
+                        futureDate.setMonth(futureDate.getMonth() + index + 1);
+                        break;
+                    case 'year':
+                        futureDate.setFullYear(futureDate.getFullYear() + index + 1);
+                        break;
+                }
+                return {
+                    date: futureDate.toISOString(),
+                    predicted_value: value,
+                    period: query.prediction_type,
+                    type: 'orders',
+                    products
+                };
+            })
+        });
     }
     catch (error) {
         console.error(error);
