@@ -22,23 +22,25 @@ app.use(body_parser_1.default.json());
 // Endpoint for predictions
 // @ts-ignore
 app.post('/predict', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
-        // Получаем тело запроса как массив
+        // Извлекаем тело запроса
         const requestData = req.body;
-        // Проверяем, что массив содержит данные
-        if (!requestData || requestData.length === 0) {
-            return res.status(400).json({ error: 'Invalid input structure' });
+        // Проверяем наличие `topdata` в массиве
+        if (!requestData || !Array.isArray(requestData) || !((_a = requestData[0]) === null || _a === void 0 ? void 0 : _a.topdata)) {
+            return res.status(400).json({ error: 'Invalid input structure: topdata missing' });
         }
-        // Извлекаем `orders` и `query` из первого элемента массива
-        const { orders, query } = requestData[0];
+        const { orders, query } = requestData[0].topdata;
+        // Проверяем, что `orders` и `query` существуют и не пустые
         if (!orders || !query || orders.length === 0 || query.length === 0) {
-            return res.status(400).json({ error: 'Orders or query is missing' });
+            return res.status(400).json({ error: 'Orders or query is missing or empty' });
         }
         // Объединяем все заказы в один массив
+        // @ts-ignore
         const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data);
-        // Парсим первый запрос из `query`
+        // Парсим запрос (предполагаем, что он строка JSON в поле `query`)
         const parsedQuery = JSON.parse(query[0].query);
-        // Проверяем валидность запроса
+        // Проверяем валидность параметров в `query`
         if (!parsedQuery.prediction_type || !parsedQuery.quantity || parsedQuery.quantity <= 0) {
             return res.status(400).json({ error: 'Invalid query parameters' });
         }
