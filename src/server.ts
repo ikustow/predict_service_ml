@@ -14,37 +14,50 @@ app.use(bodyParser.json());
 // @ts-ignore
 app.post('/predict', async (req: Request, res: Response) => {
     try {
-        // Извлекаем тело запроса
         const requestData = req.body;
-         console.log(requestData)
-        // Проверяем наличие `topdata` в массиве
+
+        // Проверяем наличие topdata
         if (!requestData || !Array.isArray(requestData) || !requestData[0]?.topdata) {
             return res.status(400).json({ error: 'Invalid input structure: topdata missing' });
         }
 
         const { orders, query } = requestData[0].topdata;
 
-        // Проверяем, что `orders` и `query` существуют и не пустые
         if (!orders || !query || orders.length === 0 || query.length === 0) {
             return res.status(400).json({ error: 'Orders or query is missing or empty' });
         }
 
-        // Объединяем все заказы в один массив
         // @ts-ignore
         const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data);
 
-        // Парсим запрос (предполагаем, что он строка JSON в поле `query`)
-        const parsedQuery = JSON.parse(query[0].query);
+        // Проверка и обработка поля query
+        let parsedQuery;
+        try {
+            // Попытка распарсить строку как JSON
+            parsedQuery = JSON.parse(query[0].query);
+        } catch (e) {
+            // Если строка не JSON, предполагаем альтернативный формат и парсим вручную
+            console.warn('Attempting to process query as alternate format:', query[0].query);
+            const altQueryRegex = /prediction_type - (\w+), quantity - (\d+)/;
+            const match = query[0].query.match(altQueryRegex);
+            if (match) {
+                parsedQuery = {
+                    prediction_type: match[1],
+                    quantity: parseInt(match[2], 10)
+                };
+            } else {
+                // Если не удалось обработать строку, возвращаем ошибку
+                console.error('Invalid query format:', query[0].query);
+                return res.status(400).json({ error: 'Invalid query format. Expected JSON string or alternate format.' });
+            }
+        }
 
-        // Проверяем валидность параметров в `query`
         if (!parsedQuery.prediction_type || !parsedQuery.quantity || parsedQuery.quantity <= 0) {
             return res.status(400).json({ error: 'Invalid query parameters' });
         }
 
-        // Выполняем предсказание
         const { predictions, products } = predictOrdersWithStats(flattenedOrders, parsedQuery.prediction_type, parsedQuery.quantity);
 
-        // Формируем ответ
         return res.status(200).json({
             predictions: predictions.map((value, index) => {
                 const futureDate = new Date();
@@ -74,7 +87,6 @@ app.post('/predict', async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
-
 // Test endpoint to check service health
 app.get('/health', (req: Request, res: Response) => {
     res.status(200).json({ status: 'OK', message: 'Service is running' });
