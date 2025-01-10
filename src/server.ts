@@ -16,7 +16,7 @@ app.post('/predict', async (req: Request, res: Response) => {
     try {
         // Извлекаем тело запроса
         const requestData = req.body;
-
+         console.log(requestData)
         // Проверяем наличие `topdata` в массиве
         if (!requestData || !Array.isArray(requestData) || !requestData[0]?.topdata) {
             return res.status(400).json({ error: 'Invalid input structure: topdata missing' });
