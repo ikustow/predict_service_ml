@@ -14,22 +14,30 @@ app.use(bodyParser.json());
 // @ts-ignore
 app.post('/predict', async (req: Request, res: Response) => {
     try {
-        const [ordersPayload, queryPayload] = req.body;
-        const { data: orders }: { data: OrderData[] } = ordersPayload;
-        const query: QueryData = JSON.parse(queryPayload.query);
+        const { orders, query }: { orders: { data: OrderData[] }[]; query: { query: string }[] } = req.body;
 
-        // Validate input
-        if (!orders || !query.prediction_type || !query.quantity || query.quantity <= 0) {
-            return res.status(400).json({ error: 'Invalid input parameters' });
+        // Проверка наличия данных
+        if (!orders || !query || orders.length === 0 || query.length === 0) {
+            return res.status(400).json({ error: 'Invalid input structure' });
         }
 
-        // Perform prediction using Simple-statistics
-        const { predictions, products } = predictOrdersWithStats(orders, query.prediction_type, query.quantity);
+        // Извлечение заказов и запроса
+        const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data); // Объединяем все заказы в один массив
+        const parsedQuery = JSON.parse(query[0].query); // Парсим строку JSON в объект
 
+        // Проверка валидности запроса
+        if (!parsedQuery.prediction_type || !parsedQuery.quantity || parsedQuery.quantity <= 0) {
+            return res.status(400).json({ error: 'Invalid query parameters' });
+        }
+
+        // Выполняем предсказание
+        const { predictions, products } = predictOrdersWithStats(flattenedOrders, parsedQuery.prediction_type, parsedQuery.quantity);
+
+        // Формируем ответ
         return res.status(200).json({
             predictions: predictions.map((value, index) => {
                 const futureDate = new Date();
-                switch (query.prediction_type) {
+                switch (parsedQuery.prediction_type) {
                     case 'day':
                         futureDate.setDate(futureDate.getDate() + index + 1);
                         break;
@@ -44,11 +52,11 @@ app.post('/predict', async (req: Request, res: Response) => {
                 return {
                     date: futureDate.toISOString(),
                     predicted_value: value,
-                    period: query.prediction_type,
+                    period: parsedQuery.prediction_type,
                     type: 'orders',
-                    products
+                    products,
                 };
-            })
+            }),
         });
     } catch (error) {
         console.error(error);
