@@ -14,18 +14,28 @@ app.use(bodyParser.json());
 // @ts-ignore
 app.post('/predict', async (req: Request, res: Response) => {
     try {
-        const { orders, query }: { orders: { data: OrderData[] }[]; query: { query: string }[] } = req.body;
+        // Получаем тело запроса как массив
+        const requestData: { orders: { data: OrderData[] }[]; query: { query: string }[] }[] = req.body;
 
-        // Проверка наличия данных
-        if (!orders || !query || orders.length === 0 || query.length === 0) {
+        // Проверяем, что массив содержит данные
+        if (!requestData || requestData.length === 0) {
             return res.status(400).json({ error: 'Invalid input structure' });
         }
 
-        // Извлечение заказов и запроса
-        const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data); // Объединяем все заказы в один массив
-        const parsedQuery = JSON.parse(query[0].query); // Парсим строку JSON в объект
+        // Извлекаем `orders` и `query` из первого элемента массива
+        const { orders, query } = requestData[0];
 
-        // Проверка валидности запроса
+        if (!orders || !query || orders.length === 0 || query.length === 0) {
+            return res.status(400).json({ error: 'Orders or query is missing' });
+        }
+
+        // Объединяем все заказы в один массив
+        const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data);
+
+        // Парсим первый запрос из `query`
+        const parsedQuery = JSON.parse(query[0].query);
+
+        // Проверяем валидность запроса
         if (!parsedQuery.prediction_type || !parsedQuery.quantity || parsedQuery.quantity <= 0) {
             return res.status(400).json({ error: 'Invalid query parameters' });
         }
@@ -63,6 +73,7 @@ app.post('/predict', async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 // Test endpoint to check service health
 app.get('/health', (req: Request, res: Response) => {
     res.status(200).json({ status: 'OK', message: 'Service is running' });
