@@ -23,19 +23,32 @@ app.use(body_parser_1.default.json());
 // @ts-ignore
 app.post('/predict', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const [ordersPayload, queryPayload] = req.body;
-        const { data: orders } = ordersPayload;
-        const query = JSON.parse(queryPayload.query);
-        // Validate input
-        if (!orders || !query.prediction_type || !query.quantity || query.quantity <= 0) {
-            return res.status(400).json({ error: 'Invalid input parameters' });
+        // Получаем тело запроса как массив
+        const requestData = req.body;
+        // Проверяем, что массив содержит данные
+        if (!requestData || requestData.length === 0) {
+            return res.status(400).json({ error: 'Invalid input structure' });
         }
-        // Perform prediction using Simple-statistics
-        const { predictions, products } = (0, predictionService_1.predictOrdersWithStats)(orders, query.prediction_type, query.quantity);
+        // Извлекаем `orders` и `query` из первого элемента массива
+        const { orders, query } = requestData[0];
+        if (!orders || !query || orders.length === 0 || query.length === 0) {
+            return res.status(400).json({ error: 'Orders or query is missing' });
+        }
+        // Объединяем все заказы в один массив
+        const flattenedOrders = orders.flatMap(orderGroup => orderGroup.data);
+        // Парсим первый запрос из `query`
+        const parsedQuery = JSON.parse(query[0].query);
+        // Проверяем валидность запроса
+        if (!parsedQuery.prediction_type || !parsedQuery.quantity || parsedQuery.quantity <= 0) {
+            return res.status(400).json({ error: 'Invalid query parameters' });
+        }
+        // Выполняем предсказание
+        const { predictions, products } = (0, predictionService_1.predictOrdersWithStats)(flattenedOrders, parsedQuery.prediction_type, parsedQuery.quantity);
+        // Формируем ответ
         return res.status(200).json({
             predictions: predictions.map((value, index) => {
                 const futureDate = new Date();
-                switch (query.prediction_type) {
+                switch (parsedQuery.prediction_type) {
                     case 'day':
                         futureDate.setDate(futureDate.getDate() + index + 1);
                         break;
@@ -49,11 +62,11 @@ app.post('/predict', (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 return {
                     date: futureDate.toISOString(),
                     predicted_value: value,
-                    period: query.prediction_type,
+                    period: parsedQuery.prediction_type,
                     type: 'orders',
-                    products
+                    products,
                 };
-            })
+            }),
         });
     }
     catch (error) {
